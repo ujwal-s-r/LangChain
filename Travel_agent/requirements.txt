@@ -1,0 +1,23 @@
+# LangChain Core and Google Gemini Integration
+langchain==0.3.7
+langchain-core==0.3.15
+langchain-google-genai==2.0.5
+
+# FastAPI for web server and deployment
+fastapi==0.115.4
+uvicorn[standard]==0.32.0
+
+# HTTP Requests for API calls
+requests==2.32.3
+
+# Environment variable management
+python-dotenv==1.0.1
+
+# Google Generative AI (required by langchain-google-genai)
+google-generativeai==0.8.3
+
+# CORS middleware for FastAPI
+python-multipart==0.0.12
+
+# Pydantic for data validation (compatible with Python 3.10)
+pydantic==2.9.2
