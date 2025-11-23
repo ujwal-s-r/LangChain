@@ -7,8 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import Optional
-from agent import run_agent
+from typing import Optional, List
+from langchain_agent import create_langchain_tourism_agent
+from models import TourismResponse
 
 # Create FastAPI app
 app = FastAPI(
@@ -46,6 +47,14 @@ class ChatResponse(BaseModel):
     response: str
     success: bool
     error: Optional[str] = None
+    
+    # Structured data fields
+    place: Optional[str] = None
+    has_weather: Optional[bool] = None
+    has_places: Optional[bool] = None
+    temperature: Optional[float] = None
+    precipitation_chance: Optional[int] = None
+    attractions: Optional[List[str]] = None
 
 
 # Routes
@@ -74,19 +83,26 @@ async def chat(request: ChatRequest):
         request: ChatRequest containing user message
         
     Returns:
-        ChatResponse with agent's response
+        ChatResponse with structured agent response
     """
     try:
         if not request.message or request.message.strip() == "":
             raise HTTPException(status_code=400, detail="Message cannot be empty")
         
-        # Run the agent with user input
-        response = run_agent(request.message)
+        # Create tourism agent and process request
+        tourism_agent = create_langchain_tourism_agent()
+        result: TourismResponse = tourism_agent.run(request.message)
         
         return ChatResponse(
-            response=response,
-            success=True,
-            error=None
+            response=result.message,
+            success=result.success,
+            error=result.error,
+            place=result.place,
+            has_weather=result.has_weather,
+            has_places=result.has_places,
+            temperature=result.temperature,
+            precipitation_chance=result.precipitation_chance,
+            attractions=result.attractions
         )
         
     except Exception as e:
