@@ -8,8 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, List
-from langchain_agent import create_langchain_tourism_agent
-from models import TourismResponse
+from tourism_agent import create_tourism_agent_with_tools
+from schemas import TourismResponse
 
 # Create FastAPI app
 app = FastAPI(
@@ -90,8 +90,8 @@ async def chat(request: ChatRequest):
             raise HTTPException(status_code=400, detail="Message cannot be empty")
         
         # Create tourism agent and process request
-        tourism_agent = create_langchain_tourism_agent()
-        result: TourismResponse = tourism_agent.run(request.message)
+        tourism_agent = create_tourism_agent_with_tools()
+        result = tourism_agent.run(request.message)
         
         return ChatResponse(
             response=result.message,
