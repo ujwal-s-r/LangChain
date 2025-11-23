@@ -35,7 +35,7 @@ class MistralGPTOSS(LLM):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> str:
-        """Call the Qubrid AI API"""
+        """Call the Mistral API with GPT-OSS-20B model and handle SSE streaming"""
         url = "https://platform.qubrid.com/api/v1/qubridai/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -51,19 +51,41 @@ class MistralGPTOSS(LLM):
                 }
             ],
             "temperature": self.temperature,
-            "max_tokens": self.max_tokens
+            "max_tokens": self.max_tokens,
+            "stream": False
         }
         
         try:
-            response = requests.post(url, headers=headers, json=data, timeout=30)
+            response = requests.post(url, headers=headers, json=data, timeout=60)
             response.raise_for_status()
-            result = response.json()
             
-            # Extract content from response
-            if "choices" in result and len(result["choices"]) > 0:
-                return result["choices"][0]["message"]["content"]
+            # Handle SSE streaming response (API always streams)
+            if 'text/event-stream' in response.headers.get('Content-Type', ''):
+                full_content = ""
+                lines = response.text.split('\n')
+                
+                for line in lines:
+                    if line.startswith('data: '):
+                        data_str = line[6:].strip()
+                        if data_str and data_str != '[DONE]':
+                            try:
+                                chunk = json.loads(data_str)
+                                if "choices" in chunk and len(chunk["choices"]) > 0:
+                                    delta = chunk["choices"][0].get("delta", {})
+                                    content = delta.get("content", "")
+                                    if content:
+                                        full_content += content
+                            except json.JSONDecodeError:
+                                continue
+                
+                return full_content if full_content else "I apologize, but I couldn't generate a response."
             else:
-                return "I apologize, but I couldn't generate a response."
+                # Handle regular JSON response (if ever supported)
+                result = response.json()
+                if "choices" in result and len(result["choices"]) > 0:
+                    return result["choices"][0]["message"]["content"]
+                else:
+                    return "I apologize, but I couldn't generate a response."
                 
         except requests.exceptions.RequestException as e:
             return f"Error connecting to AI service: {str(e)}"
