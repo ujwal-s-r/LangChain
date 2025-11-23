@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from langchain_core.language_models.llms import LLM
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from langchain.prompts import PromptTemplate
-from tools import get_weather, get_tourist_places
+from tools import get_weather, get_tourist_places, get_coordinates
 from schemas import TourismResponse, tourism_output_parser
 
 load_dotenv()
@@ -111,21 +111,29 @@ Your response:""",
         )
     
     def extract_place_name(self, query: str) -> str:
-        """Extract place name from query"""
+        """Extract place name from query - handles natural language and simple place names"""
+        # Enhanced patterns for more natural language
         patterns = [
-            r"(?:go(?:ing)? to|visit(?:ing)?|in|at|for)\s+([A-Z][a-zA-Z\s]+?)(?:\s*,|\s*\?|\s*\.|\s+let|\s+what|\s+and|$)",
+            r"(?:trip to|go(?:ing)? to|visit(?:ing)?|plan.*to)\s+([A-Z][a-zA-Z\s]+?)(?:\s+plan|\s+and|\s*,|\s*$)",
+            r"(?:in|at|for)\s+([A-Z][a-zA-Z\s]+?)(?:\s*,|\s*\?|\s*\.|\s+let|\s+what|\s+and|$)",
             r"([A-Z][a-zA-Z\s]+?)(?:\s+let\'s|\s+what|\s+temperature|\s+weather|\s+places)",
         ]
         
         for pattern in patterns:
-            match = re.search(pattern, query)
+            match = re.search(pattern, query, re.IGNORECASE)
             if match:
-                return match.group(1).strip()
+                place = match.group(1).strip()
+                # Capitalize first letter of each word
+                return ' '.join(word.capitalize() for word in place.split())
         
-        # Fallback: find capitalized words
-        words = query.split()
+        # If query is just a place name (single or multiple capitalized words)
+        words = query.strip().split()
+        if len(words) <= 3 and all(word[0].isupper() or word.lower() in ['and', 'the'] for word in words if word):
+            return query.strip()
+        
+        # Fallback: find capitalized words in the query
         for i, word in enumerate(words):
-            if word and word[0].isupper() and word.lower() not in ['i', 'what', 'and', 'the', 'is', 'are']:
+            if word and len(word) > 1 and word[0].isupper() and word.lower() not in ['i', 'hey', 'what', 'and', 'the', 'is', 'are', 'am']:
                 place_parts = [word]
                 for next_word in words[i+1:]:
                     if next_word and next_word[0].isupper():
@@ -152,65 +160,108 @@ Your response:""",
         return {"weather": needs_weather, "places": needs_places}
     
     def run(self, user_query: str) -> TourismResponse:
-        """Process query and return structured response"""
+        """
+        Process user query (natural language or place name) and return weather + places information
+        
+        Args:
+            user_query: Natural language query or place name 
+                       (e.g., "Bangalore" or "Hey am planning to go for trip to Manali")
+            
+        Returns:
+            TourismResponse with weather and places data
+        """
         try:
+            if not user_query or not user_query.strip():
+                return TourismResponse(
+                    place="Unknown",
+                    success=False,
+                    message="Please provide a query or place name.",
+                    error="Empty query"
+                )
+            
+            # Extract place name from natural language query
             place_name = self.extract_place_name(user_query)
             
             if not place_name:
                 return TourismResponse(
                     place="Unknown",
                     success=False,
-                    message="I couldn't identify which place you're asking about. Please specify the location.",
-                    error="No place name found"
+                    message="I couldn't identify which place you're asking about. Please mention a place name.",
+                    error="No place name found in query"
                 )
             
-            intent = self.determine_intent(user_query)
+            # Initialize response - always get both weather and places
+            # Get coordinates for the main location first
+            geo_result = get_coordinates.invoke({"place_name": place_name})
             
-            # Initialize response
             response = TourismResponse(
                 place=place_name,
-                has_weather=intent["weather"],
-                has_places=intent["places"],
+                has_weather=True,
+                has_places=True,
                 success=True,
-                message=""
+                message="",
+                latitude=geo_result.get("latitude") if geo_result.get("success") else None,
+                longitude=geo_result.get("longitude") if geo_result.get("success") else None
             )
             
             message_parts = []
             
-            # Get weather if needed
-            if intent["weather"]:
-                weather_result = get_weather.invoke({"place_name": place_name})
-                
-                if "°C" in weather_result:
-                    temp_match = re.search(r'(\d+\.?\d*)°C', weather_result)
-                    precip_match = re.search(r'(\d+)%', weather_result)
-                    
-                    if temp_match:
-                        response.temperature = float(temp_match.group(1))
-                    if precip_match:
-                        response.precipitation_chance = int(precip_match.group(1))
-                    
-                    message_parts.append(weather_result)
-                elif "don't know" in weather_result.lower():
-                    response.success = False
-                    response.error = weather_result
-                    return response
+            # Get weather information
+            weather_result = get_weather.invoke({"place_name": place_name})
             
-            # Get places if needed
-            if intent["places"]:
-                places_result = get_tourist_places.invoke({"place_name": place_name})
+            if "°C" in weather_result and "currently" in weather_result:
+                temp_match = re.search(r'(\d+\.?\d*)°C', weather_result)
+                precip_match = re.search(r'(\d+)%', weather_result)
                 
-                if "these are the places you can go" in places_result:
-                    lines = places_result.split('\n')[1:]
-                    response.attractions = [line.strip() for line in lines if line.strip()]
-                    message_parts.append(places_result)
-                elif "don't know" in places_result.lower():
-                    response.success = False
-                    response.error = places_result
-                    return response
-                elif "couldn't find" in places_result.lower():
-                    response.attractions = []
-                    message_parts.append(places_result)
+                if temp_match:
+                    response.temperature = float(temp_match.group(1))
+                if precip_match:
+                    response.precipitation_chance = int(precip_match.group(1))
+                
+                message_parts.append(weather_result)
+            elif "don't know" in weather_result.lower():
+                response.success = False
+                response.error = weather_result
+                return response
+            
+            # Get places information
+            places_result = get_tourist_places.invoke({"place_name": place_name})
+            
+            if "these are the places you can go" in places_result:
+                # Split by COORDS marker if present
+                parts = places_result.split('COORDS:')
+                main_text = parts[0]
+                
+                lines = main_text.split('\n')[1:]
+                response.attractions = [line.strip() for line in lines if line.strip()]
+                
+                # Parse coordinates if available
+                if len(parts) > 1:
+                    from schemas import AttractionWithCoords
+                    coords_lines = parts[1].strip().split('\n')
+                    response.attractions_with_coords = []
+                    for coord_line in coords_lines:
+                        if '|' in coord_line:
+                            try:
+                                name, lat, lon = coord_line.split('|')
+                                response.attractions_with_coords.append(
+                                    AttractionWithCoords(
+                                        name=name.strip(),
+                                        latitude=float(lat),
+                                        longitude=float(lon)
+                                    )
+                                )
+                            except:
+                                pass
+                
+                message_parts.append(main_text.strip())
+            elif "don't know" in places_result.lower():
+                response.success = False
+                response.error = places_result
+                return response
+            elif "couldn't find" in places_result.lower():
+                response.attractions = []
+                message_parts.append(places_result)
             
             # Combine messages
             if len(message_parts) == 2:
@@ -224,7 +275,7 @@ Your response:""",
             
         except Exception as e:
             return TourismResponse(
-                place=place_name if 'place_name' in locals() else "Unknown",
+                place=place_name if 'place_name' in locals() and place_name else "Unknown",
                 success=False,
                 message="I encountered an error processing your request.",
                 error=str(e)

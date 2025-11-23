@@ -48,7 +48,7 @@ def get_tourist_places(place_name: str) -> str:
         # Search radius in meters (approximately 10km)
         radius = 10000
         
-        # Overpass QL query to find tourist attractions
+        # Overpass QL query to find tourist attractions with center points for ways
         # Searches for tourism=* tags (attractions, museums, viewpoints, etc.)
         query = f"""
         [out:json][timeout:25];
@@ -60,7 +60,7 @@ def get_tourist_places(place_name: str) -> str:
           node["historic"](around:{radius},{latitude},{longitude});
           way["historic"](around:{radius},{latitude},{longitude});
         );
-        out body;
+        out body center;
         >;
         out skel qt;
         """
@@ -72,8 +72,9 @@ def get_tourist_places(place_name: str) -> str:
         data = response.json()
         elements = data.get("elements", [])
         
-        # Extract place names
+        # Extract place names with coordinates
         places = []
+        places_with_coords = []
         seen_names = set()
         
         for element in elements:
@@ -84,6 +85,19 @@ def get_tourist_places(place_name: str) -> str:
                 places.append(name)
                 seen_names.add(name)
                 
+                # Get coordinates (handle both nodes and ways)
+                lat = element.get("lat")
+                lon = element.get("lon")
+                
+                # For ways, calculate center point
+                if lat is None or lon is None:
+                    if element.get("type") == "way" and "center" in element:
+                        lat = element["center"].get("lat")
+                        lon = element["center"].get("lon")
+                
+                if lat and lon:
+                    places_with_coords.append(f"{name}|{lat}|{lon}")
+                
                 # Stop after finding 5 places
                 if len(places) >= 5:
                     break
@@ -91,7 +105,8 @@ def get_tourist_places(place_name: str) -> str:
         # Format response
         if places:
             places_list = "\n".join(places)
-            return f"In {place_display} these are the places you can go,\n{places_list}"
+            coords_list = "\n".join(places_with_coords)
+            return f"In {place_display} these are the places you can go,\n{places_list}\nCOORDS:\n{coords_list}"
         else:
             return f"I couldn't find specific tourist attractions in {place_display} in the database, but it may still be a great place to visit!"
             

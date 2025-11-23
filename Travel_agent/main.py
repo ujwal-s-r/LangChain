@@ -32,15 +32,22 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # Request/Response models
-class ChatRequest(BaseModel):
-    message: str
+class TripRequest(BaseModel):
+    query: str
     
     class Config:
         json_schema_extra = {
-            "example": {
-                "message": "I'm going to go to Bangalore, let's plan my trip."
-            }
+            "examples": [
+                {"query": "Bangalore"},
+                {"query": "Hey am planning to go for trip to Manali plan me 3 other places near too"}
+            ]
         }
+
+
+class AttractionWithCoords(BaseModel):
+    name: str
+    latitude: float
+    longitude: float
 
 
 class ChatResponse(BaseModel):
@@ -52,9 +59,18 @@ class ChatResponse(BaseModel):
     place: Optional[str] = None
     has_weather: Optional[bool] = None
     has_places: Optional[bool] = None
+    
+    # Coordinates
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    
+    # Weather
     temperature: Optional[float] = None
     precipitation_chance: Optional[int] = None
+    
+    # Attractions
     attractions: Optional[List[str]] = None
+    attractions_with_coords: Optional[List[AttractionWithCoords]] = None
 
 
 # Routes
@@ -74,24 +90,24 @@ async def health_check():
     }
 
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+@app.post("/plan-trip", response_model=ChatResponse)
+async def plan_trip(request: TripRequest):
     """
-    Main chat endpoint for the tourism agent
+    Plan trip endpoint - accepts natural language query or place name
     
     Args:
-        request: ChatRequest containing user message
+        request: TripRequest containing query (can be place name or natural language)
         
     Returns:
-        ChatResponse with structured agent response
+        ChatResponse with weather and tourist attractions
     """
     try:
-        if not request.message or request.message.strip() == "":
-            raise HTTPException(status_code=400, detail="Message cannot be empty")
+        if not request.query or not request.query.strip():
+            raise HTTPException(status_code=400, detail="Query cannot be empty")
         
-        # Create tourism agent and process request
+        # Create tourism agent and get trip information
         tourism_agent = create_tourism_agent_with_tools()
-        result = tourism_agent.run(request.message)
+        result = tourism_agent.run(request.query)
         
         return ChatResponse(
             response=result.message,
@@ -100,9 +116,18 @@ async def chat(request: ChatRequest):
             place=result.place,
             has_weather=result.has_weather,
             has_places=result.has_places,
+            latitude=result.latitude,
+            longitude=result.longitude,
             temperature=result.temperature,
             precipitation_chance=result.precipitation_chance,
-            attractions=result.attractions
+            attractions=result.attractions,
+            attractions_with_coords=[
+                AttractionWithCoords(
+                    name=attr.name,
+                    latitude=attr.latitude,
+                    longitude=attr.longitude
+                ) for attr in result.attractions_with_coords
+            ] if result.attractions_with_coords else None
         )
         
     except Exception as e:
@@ -115,18 +140,34 @@ async def chat(request: ChatRequest):
 
 @app.get("/api/info")
 async def get_info():
-    """Get information about available capabilities"""
+    """Get API information and usage"""
     return {
-        "capabilities": [
-            "Weather information for any location",
-            "Tourist attractions and places to visit",
-            "Combined trip planning with weather and places"
-        ],
-        "example_queries": [
-            "I'm going to go to Bangalore, let's plan my trip.",
-            "What is the temperature in Paris?",
-            "Tell me about the weather and places to visit in Tokyo."
-        ]
+        "name": "Tourism AI Agent API",
+        "version": "1.0.0",
+        "description": "Multi-agent tourism system providing weather and tourist attractions",
+        "endpoints": {
+            "/plan-trip": {
+                "method": "POST",
+                "description": "Get weather and attractions for a place",
+                "input": {"place": "string (e.g., 'Bangalore', 'Paris')"},
+                "output": "Weather info + Tourist attractions"
+            },
+            "/health": {
+                "method": "GET",
+                "description": "Health check endpoint"
+            }
+        },
+        "example_request": {
+            "place": "Bangalore"
+        },
+        "example_response": {
+            "response": "In Bangalore it's currently 24°C with a chance of 35% to rain. And these are the places you can go,\nLalbagh\nBangalore Palace\n...",
+            "success": True,
+            "place": "Bangalore",
+            "temperature": 24.0,
+            "precipitation_chance": 35,
+            "attractions": ["Lalbagh", "Bangalore Palace", "..."]
+        }
     }
 
 

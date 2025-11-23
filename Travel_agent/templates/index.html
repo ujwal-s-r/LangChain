@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tourism AI Agent - Trip Planner</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌍 Tourism AI Agent</h1>
+            <p class="subtitle">Plan your trip with AI-powered weather and attractions</p>
+        </header>
+
+        <main>
+            <div class="search-section">
+                <form id="tripForm">
+                    <div class="input-group">
+                        <input 
+                            type="text" 
+                            id="placeInput" 
+                            placeholder="Where do you want to go? (e.g., Manali, Paris, or ask naturally)" 
+                            required
+                            autocomplete="off"
+                        >
+                        <button type="submit" id="searchBtn">
+                            <span class="btn-text">Plan Trip</span>
+                            <span class="loader" style="display: none;">⏳</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div id="errorMessage" class="error-message" style="display: none;"></div>
+
+            <div id="resultsSection" class="results-section" style="display: none;">
+                <div class="place-header">
+                    <h2 id="placeName"></h2>
+                </div>
+
+                <!-- Map Section -->
+                <div class="map-container">
+                    <div id="map"></div>
+                </div>
+
+                <div class="info-grid">
+                    <!-- Weather Card -->
+                    <div class="info-card weather-card">
+                        <div class="card-header">
+                            <span class="icon">🌤️</span>
+                            <h3>Weather</h3>
+                        </div>
+                        <div class="card-content">
+                            <div class="weather-info">
+                                <div class="temp-display">
+                                    <span id="temperature" class="temperature">--</span>
+                                    <span class="unit">°C</span>
+                                </div>
+                                <div class="precipitation">
+                                    <span class="icon-small">🌧️</span>
+                                    <span id="precipitation">--</span>% chance of rain
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Attractions Card -->
+                    <div class="info-card attractions-card">
+                        <div class="card-header">
+                            <span class="icon">🏛️</span>
+                            <h3>Top Attractions</h3>
+                        </div>
+                        <div class="card-content">
+                            <ul id="attractionsList" class="attractions-list">
+                                <!-- Attractions will be added here -->
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="full-message">
+                    <p id="fullMessage"></p>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by Multi-Agent AI System</p>
+        </footer>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/static/script.js"></script>
+</body>
+</html>
